@@ -21,6 +21,11 @@ import {
   AlertCircle,
   Phone,
   Mail,
+  Lock,
+  ShieldCheck,
+  LogOut,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -119,6 +124,9 @@ function formatTime(time: string) {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+// Change this to your preferred admin password
+const ADMIN_PASSWORD = "gameroom2026";
+
 let mockBookings: Booking[] = [];
 let mockListeners: Array<(bookings: Booking[]) => void> = [];
 
@@ -159,12 +167,13 @@ export default function App() {
     duration: 60,
   });
   const [submitting, setSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    "book" | "schedule"
-  >("book");
-  const [showSetup, setShowSetup] = useState(
-    !isFirebaseConfigured,
-  );
+  const [activeTab, setActiveTab] = useState<"book" | "schedule">("book");
+  const [showSetup, setShowSetup] = useState(!isFirebaseConfigured);
+  const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem("gr_admin") === "1");
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminError, setAdminError] = useState("");
+  const [showAdminPw, setShowAdminPw] = useState(false);
 
   useEffect(() => {
     if (isFirebaseConfigured && db) {
@@ -335,6 +344,25 @@ export default function App() {
     }
   };
 
+  const handleAdminLogin = () => {
+    if (adminPassword === ADMIN_PASSWORD) {
+      sessionStorage.setItem("gr_admin", "1");
+      setIsAdmin(true);
+      setShowAdminModal(false);
+      setAdminPassword("");
+      setAdminError("");
+      toast.success("Admin mode enabled");
+    } else {
+      setAdminError("Incorrect password. Try again.");
+    }
+  };
+
+  const handleAdminLogout = () => {
+    sessionStorage.removeItem("gr_admin");
+    setIsAdmin(false);
+    toast("Admin mode disabled");
+  };
+
   const endTime = fromMinutes(
     toMinutes(form.startTime) + form.duration,
   );
@@ -455,6 +483,30 @@ export default function App() {
             >
               Schedule
             </button>
+            <div className="w-px h-5 bg-border mx-1" />
+            {isAdmin ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent/10 border border-accent/25 text-accent text-xs font-semibold">
+                  <ShieldCheck size={13} />
+                  Admin
+                </div>
+                <button
+                  onClick={handleAdminLogout}
+                  title="Exit admin mode"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                >
+                  <LogOut size={15} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setAdminPassword(""); setAdminError(""); setShowAdminModal(true); }}
+                title="Admin login"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              >
+                <Lock size={15} />
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -493,13 +545,9 @@ export default function App() {
                     <StationCard
                       key={station.id}
                       station={station}
-                      bookings={getStationBookings(
-                        station.id,
-                        todayStr,
-                      )}
-                      isAvailable={isStationAvailableNow(
-                        station.id,
-                      )}
+                      bookings={getStationBookings(station.id, todayStr)}
+                      isAvailable={isStationAvailableNow(station.id)}
+                      isAdmin={isAdmin}
                       onBook={() => openBooking(station)}
                       onDelete={handleDelete}
                     />
@@ -516,18 +564,13 @@ export default function App() {
                   </h3>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {STATIONS.filter((s) => s.type === "ps5").map(
-                    (station) => (
+                  {STATIONS.filter((s) => s.type === "ps5").map((station) => (
                       <StationCard
                         key={station.id}
                         station={station}
-                        bookings={getStationBookings(
-                          station.id,
-                          todayStr,
-                        )}
-                        isAvailable={isStationAvailableNow(
-                          station.id,
-                        )}
+                        bookings={getStationBookings(station.id, todayStr)}
+                        isAvailable={isStationAvailableNow(station.id)}
+                        isAdmin={isAdmin}
                         onBook={() => openBooking(station)}
                         onDelete={handleDelete}
                       />
@@ -651,14 +694,14 @@ export default function App() {
                                   ? `${b.duration / 60}h`
                                   : `${b.duration}m`}
                               </div>
-                              <button
-                                onClick={() =>
-                                  handleDelete(b.id)
-                                }
-                                className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-lg hover:bg-destructive/10 mt-0.5"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleDelete(b.id)}
+                                  className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-lg hover:bg-destructive/10 mt-0.5"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -671,6 +714,91 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Admin Login Modal */}
+      <AnimatePresence>
+        {showAdminModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={(e) => e.target === e.currentTarget && setShowAdminModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-card border border-border rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+            >
+              <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center">
+                    <Lock size={16} className="text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold">Admin Access</h3>
+                    <p className="text-xs text-muted-foreground">Enter your password to continue</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAdminModal(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Password</label>
+                  <div className="relative">
+                    <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    <input
+                      type={showAdminPw ? "text" : "password"}
+                      value={adminPassword}
+                      onChange={(e) => { setAdminPassword(e.target.value); setAdminError(""); }}
+                      onKeyDown={(e) => e.key === "Enter" && handleAdminLogin()}
+                      placeholder="Enter admin password"
+                      autoFocus
+                      className="w-full bg-input-background border border-border rounded-xl pl-10 pr-10 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminPw((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showAdminPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {adminError && (
+                    <p className="text-xs text-destructive mt-2 flex items-center gap-1.5">
+                      <AlertCircle size={12} />
+                      {adminError}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="px-6 pb-6 flex gap-3">
+                <button
+                  onClick={() => setShowAdminModal(false)}
+                  className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-secondary transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAdminLogin}
+                  disabled={!adminPassword}
+                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <ShieldCheck size={15} />
+                  Sign In
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Booking Modal */}
       <AnimatePresence>
@@ -967,12 +1095,14 @@ function StationCard({
   station,
   bookings,
   isAvailable,
+  isAdmin,
   onBook,
   onDelete,
 }: {
   station: Station;
   bookings: Booking[];
   isAvailable: boolean;
+  isAdmin: boolean;
   onBook: () => void;
   onDelete: (id: string) => void;
 }) {
@@ -1095,12 +1225,14 @@ function StationCard({
                         ? `${b.duration / 60}h`
                         : `${b.duration}m`}
                     </span>
-                    <button
-                      onClick={() => onDelete(b.id)}
-                      className="text-muted-foreground opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-all"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => onDelete(b.id)}
+                        className="text-muted-foreground opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-all"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 );
               })}
